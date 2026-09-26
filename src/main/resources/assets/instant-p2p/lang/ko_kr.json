@@ -1,4 +1,6 @@
 {
+  "instant-p2p.channel.reset": "초기화",
+  "instant-p2p.channel.reset_hint": "채널 목록을 normal로 바꿉니다. 완료를 누르면 저장됩니다.",
   "instant-p2p.room_list.broadcast_filter.all.short": "모두",
   "instant-p2p.room_list.broadcast_filter.allowed_only.short": "방송 허용",
   "instant-p2p.room_list.broadcast_filter.disallowed_only.short": "방송 불가",

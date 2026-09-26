@@ -37,6 +37,7 @@ import java.util.List;
 public class ChannelScreen extends Screen {
 
     private static final int PANEL_W = 260;
+    private static final int RESET_W = 96, FIELD_W = PANEL_W - RESET_W - 6;
     /** 위에서부터: 제목, 설명(2줄), 입력란, 채널 칸(2줄), 상한 안내, 규칙 버튼, 규칙 설명(2줄), 완료/취소. */
     private static final int DESC_Y = 32, FIELD_Y = 60, CHIPS_Y = 88, MAX_HINT_Y = 124, RULE_Y = 140, RULE_DESC_Y = 164, BUTTONS_Y = 190;
     private static final int LINE_H = 10;
@@ -117,12 +118,17 @@ public class ChannelScreen extends Screen {
     @Override
     protected void init() {
         int x = this.panelX();
-        this.field = new EditBox(this.font, x, FIELD_Y, PANEL_W, 20, TITLE_TEXT);
+        this.field = new EditBox(this.font, x, FIELD_Y, FIELD_W, 20, TITLE_TEXT);
         this.field.setMaxLength(TEXT_MAX_LENGTH);
         this.field.setValue(this.text);
         this.field.setHint(Component.literal("normal,kite2459,loggamja,minedapple").withStyle(ChatFormatting.DARK_GRAY));
         this.field.setResponder(t -> this.text = t);
         this.addRenderableWidget(this.field);
+        this.addRenderableWidget(Button.builder(Component.translatable("instant-p2p.channel.reset"), b ->
+                        this.field.setValue("normal"))
+                .bounds(x + FIELD_W + 6, FIELD_Y, RESET_W, 20)
+                .tooltip(Tooltip.create(Component.translatable("instant-p2p.channel.reset_hint"))).build());
+
 
         this.ruleButton = Button.builder(Component.empty(), b -> this.toggleRule()).bounds(x, RULE_Y, PANEL_W, 20).build();
         this.ruleButton.setTooltip(Tooltip.create(RULE_TOOLTIP_TEXT));
@@ -182,12 +188,17 @@ public class ChannelScreen extends Screen {
     @Override
     protected void init() {
         int x = this.panelX();
-        this.field = new TextFieldWidget(this.textRenderer, x, FIELD_Y, PANEL_W, 20, TITLE_TEXT);
+        this.field = new TextFieldWidget(this.textRenderer, x, FIELD_Y, FIELD_W, 20, TITLE_TEXT);
         this.field.setMaxLength(TEXT_MAX_LENGTH);
         this.field.setText(this.text);
         this.field.setPlaceholder(Text.literal("normal,kite2459,loggamja,minedapple").formatted(Formatting.DARK_GRAY));
         this.field.setChangedListener(t -> this.text = t);
         this.addDrawableChild(this.field);
+        this.addDrawableChild(ButtonWidget.builder(Text.translatable("instant-p2p.channel.reset"), b ->
+                        this.field.setText("normal"))
+                .dimensions(x + FIELD_W + 6, FIELD_Y, RESET_W, 20)
+                .tooltip(Tooltip.of(Text.translatable("instant-p2p.channel.reset_hint"))).build());
+
 
         this.ruleButton = ButtonWidget.builder(Text.empty(), b -> this.toggleRule()).dimensions(x, RULE_Y, PANEL_W, 20).build();
         this.ruleButton.setTooltip(Tooltip.of(RULE_TOOLTIP_TEXT));

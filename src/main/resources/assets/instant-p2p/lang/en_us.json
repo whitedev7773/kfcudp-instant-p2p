@@ -1,4 +1,6 @@
 {
+  "instant-p2p.channel.reset": "Reset to normal",
+  "instant-p2p.channel.reset_hint": "Replace the channel list with normal. Press Done to save.",
   "instant-p2p.room_list.broadcast_filter.all.short": "All",
   "instant-p2p.room_list.broadcast_filter.allowed_only.short": "Allowed",
   "instant-p2p.room_list.broadcast_filter.disallowed_only.short": "Not allowed",
