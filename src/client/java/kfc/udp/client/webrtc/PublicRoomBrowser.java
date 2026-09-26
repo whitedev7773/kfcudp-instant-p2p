@@ -93,6 +93,7 @@ public final class PublicRoomBrowser {
         final String[] lobbyIds;
         final AtomicReferenceArray<WebSocketClient> ws;
         final AtomicLongArray backoffMs;
+        final java.util.concurrent.atomic.AtomicIntegerArray failed;
         /** lobby별로 지금 살아 있는(peer 목록에 있는) "r" 코드 집합. null = 아직 control을 못 받음. */
         final AtomicReferenceArray<Set<String>> liveCodesByLobby;
         /** 코드 → 마지막으로 받은 방 정보. 여러 lobby(채널)에 걸친 방이면 아무 lobby에서 온 갱신이든 반영. */
@@ -108,6 +109,7 @@ public final class PublicRoomBrowser {
             }
             this.ws = new AtomicReferenceArray<>(n);
             this.backoffMs = new AtomicLongArray(n);
+            this.failed = new java.util.concurrent.atomic.AtomicIntegerArray(n);
             this.liveCodesByLobby = new AtomicReferenceArray<>(n);
             for (int i = 0; i < n; i++) this.backoffMs.set(i, INITIAL_BACKOFF_MS);
         }
@@ -185,6 +187,24 @@ public final class PublicRoomBrowser {
     private List<RoomEntry> fakeSource;
     private String fakeChannel;
 
+    public enum State { LOADING, READY, RECONNECTING }
+
+    /** A successful WebSocket handshake alone does not mean a room snapshot has arrived. */
+    public State state() {
+        if (FAKE_ROOMS > 0) return State.READY;
+        Session s = this.session;
+        if (s == null) return State.LOADING;
+        boolean pending = false;
+        for (int i = 0; i < s.lobbyIds.length; i++) {
+            if (s.failed.get(i) != 0) return State.RECONNECTING;
+            Set<String> codes = s.liveCodesByLobby.get(i);
+            // A delta only lists room codes. Keep loading until their separate
+            // room_update messages arrive, or a later delta removes the codes.
+            if (codes == null || !s.infoByCode.keySet().containsAll(codes)) pending = true;
+        }
+        return pending ? State.LOADING : State.READY;
+    }
+
     private boolean isLive(Session s, int idx, WebSocketClient client) {
         return this.session == s && s.ws.get(idx) == client;
     }
@@ -210,6 +230,7 @@ public final class PublicRoomBrowser {
                 if (!isLive(s, idx, this)) return;
                 // 끊긴 동안 이 lobby 목록은 더는 안 갱신된다 — 그대로 두면 그 사이 닫힌 방이 계속
                 // 보이고 눌러도 접속이 안 된다. 다시 붙으면 서버가 최신 목록을 곧장 보낸다.
+                s.failed.set(idx, 1);
                 s.liveCodesByLobby.set(idx, null);
                 recombine(s);
                 scheduleReconnect(s, idx);
@@ -222,7 +243,10 @@ public final class PublicRoomBrowser {
                 client.connect();
             } catch (Exception e) {
                 LOG.warn("[public-room] browse connect failed (lobby={}): {}", idx, e.toString());
-                if (isLive(s, idx, client)) scheduleReconnect(s, idx);
+                if (isLive(s, idx, client)) {
+                    s.failed.set(idx, 1);
+                    scheduleReconnect(s, idx);
+                }
                 return;
             }
             // 접속하는 사이 화면이 닫혔거나 재시작됐으면 방금 붙은 연결을 닫는다 — 안 닫으면
@@ -260,6 +284,7 @@ public final class PublicRoomBrowser {
             if (name != null && name.startsWith("r")) codes.remove(name.substring(1));
         }
         s.liveCodesByLobby.set(idx, codes);
+        s.failed.set(idx, 0);
         this.recombine(s);
     }
 

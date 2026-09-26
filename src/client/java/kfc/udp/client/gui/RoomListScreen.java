@@ -7,7 +7,6 @@ import kfc.udp.client.webrtc.PublicRoomBrowser;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
-import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.components.Tooltip;
@@ -19,7 +18,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.CheckboxWidget;
-import net.minecraft.client.gui.widget.CyclingButtonWidget;
+import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.screen.ScreenTexts;
@@ -48,49 +47,16 @@ import java.util.Random;
  */
 public class RoomListScreen extends Screen {
 
-    /** 코드 입력란 폭 — 접속/취소 버튼이 이 폭 안에서 절반씩 나눠 쓴다(기존 JoinRoomScreen 구조와 동일).
-     * 검색창/빠른 시작도 리스트 폭(ROW_W) 대신 이 폭에 맞춰 세로로 쌓는다. */
     private static final int CODE_FIELD_W = 200;
-
-    /** 맨 위 첫 행 — 채널 설정 버튼(좌측)과 빠른 시작(우측). CustomRoomScreen의
-     * "채널 설정(좌측 상단)/Regen Invite(우측 상단)"과 완전히 같은 좌표·크기 쌍이라
-     * 호스트/접속자 화면 어디서든 같은 자리에 뜬다. 화면 제목은 이 행의 좌우
-     * 버튼 사이 빈 중앙에 세로 중앙 정렬로 그린다(TITLE_Y — CustomRoomScreen의
-     * TITLE_Y 계산식과 동일한 이유). */
+    private static final int REFRESH_W = 90;
     static final int CHANNEL_Y = 10;
     static final int CHANNEL_FIELD_W = 100;
     static final int CHANNEL_FIELD_H = 20;
-
-    /** 하단 체크박스 줄(다른 버전 숨기기·중계 통신 강제, 초대코드 입력란 바로 위) — 체크박스 사이 간격. */
-    private static final int CHECKBOX_GAP = 10;
-    /** 체크박스를 버튼과 같은 줄에서 세로 가운데에 오게 이만큼 내린다. */
     private static final int CHECKBOX_DY = 2;
-
-    /** 방송 필터 순환 버튼의 라벨 번역 키 접미사 — enum 이름을 그대로 안 쓰는 이유는
-     * lang 키를 소문자·스네이크케이스 관례로 맞추기 위함. */
-    private static String broadcastFilterKey(kfc.udp.client.webrtc.P2PConfig.BroadcastFilter f) {
-        return switch (f) {
-            case ALL -> "all";
-            case ALLOWED_ONLY -> "allowed_only";
-            case DISALLOWED_ONLY -> "disallowed_only";
-        };
-    }
-
     static final int TITLE_Y = CHANNEL_Y + (CHANNEL_FIELD_H - 9) / 2;
-
-    /** 검색창(좌측) + 중계 통신 강제(우측, 검색창이 차지하고 남는 폭) — 첫 행 바로
-     * 아래 둘째 행. 예전엔 빠른 시작이 검색창과 다른 행에서 한 줄을 통째로 더 썼는데,
-     * 빠른 시작을 첫 행 우측(Regen Invite 자리)으로 옮기면서 이 행 하나로 줄었다.
-     * 지금은 그 자리를 방송인 역할 받기 버튼이 대신 차지한다 — 빠른 시작은 기능(quickStartButton
-     * 필드·onQuickStart·활성화 로직)은 그대로 두고 화면에 추가만 안 해서 안 보이게 했다
-     * (init()의 quickStartButton 관련 주석 참고). 검색창과 구분선 사이엔 숨 쉴 틈을 남겨서
-     * 구분선이 내용에 바짝 붙어 보이지 않게 했다. */
-    static final int SEARCH_Y      = CHANNEL_Y + CHANNEL_FIELD_H + 4;
-    /** 상단(채널·빠른시작/검색·중계강제)과 리스트 사이 구분선 — 기존 마크 멀티플레이
-     * 화면이 상단/목록/하단 3부분을 가로줄로 나누는 걸 그대로 참조했다
-     * ({@link #renderRows}에서 실제로 그림). */
-    static final int DIVIDER1_Y   = SEARCH_Y + 28;
-    static final int LIST_Y       = DIVIDER1_Y + 6;
+    static final int SEARCH_Y = CHANNEL_Y + CHANNEL_FIELD_H + 4;
+    static final int DIVIDER1_Y = SEARCH_Y + 52;
+    static final int LIST_Y = DIVIDER1_Y + 6;
     static final int ROW_H        = 26;
     static final int ROW_W        = 300;
     /** 방 칸 — 크기는 고정, 열·행 수는 화면(GUI 크기·해상도)에 맞춰 init()에서 정한다. 열 우선으로
@@ -153,10 +119,6 @@ public class RoomListScreen extends Screen {
     private static final Component BLOCKED_LIST_TEXT = Component.translatable("instant-p2p.room_list.blocked_list");
     private static final Component CHZZK_LINK_TEXT = Component.translatable("instant-p2p.room_list.chzzk_link");
     private static final Component BLOCK_TOOLTIP_TEXT = Component.translatable("instant-p2p.room_list.block_tooltip");
-    private static final Component CLEANUP_TEXT = Component.translatable("instant-p2p.room_list.cleanup");
-    private static final Component HIDE_OTHER_VERSIONS_TEXT = Component.translatable("instant-p2p.room_list.hide_other_versions");
-    private static final Component HIDE_OTHER_VERSIONS_TOOLTIP_TEXT = Component.translatable("instant-p2p.room_list.hide_other_versions_tooltip");
-    private static final Component BROADCAST_FILTER_TEXT = Component.translatable("instant-p2p.room_list.broadcast_filter");
     private static final Component REMOVED_TEXT = Component.translatable("instant-p2p.room_list.removed");
     private static final Component OTHER_VERSION_TOOLTIP_TEXT = Component.translatable("instant-p2p.room_list.other_version_tooltip");
     *///?} else {
@@ -172,10 +134,6 @@ public class RoomListScreen extends Screen {
     private static final Text BLOCKED_LIST_TEXT = Text.translatable("instant-p2p.room_list.blocked_list");
     private static final Text CHZZK_LINK_TEXT = Text.translatable("instant-p2p.room_list.chzzk_link");
     private static final Text BLOCK_TOOLTIP_TEXT = Text.translatable("instant-p2p.room_list.block_tooltip");
-    private static final Text CLEANUP_TEXT = Text.translatable("instant-p2p.room_list.cleanup");
-    private static final Text HIDE_OTHER_VERSIONS_TEXT = Text.translatable("instant-p2p.room_list.hide_other_versions");
-    private static final Text HIDE_OTHER_VERSIONS_TOOLTIP_TEXT = Text.translatable("instant-p2p.room_list.hide_other_versions_tooltip");
-    private static final Text BROADCAST_FILTER_TEXT = Text.translatable("instant-p2p.room_list.broadcast_filter");
     private static final Text REMOVED_TEXT = Text.translatable("instant-p2p.room_list.removed");
     private static final Text OTHER_VERSION_TOOLTIP_TEXT = Text.translatable("instant-p2p.room_list.other_version_tooltip");
     //?}
@@ -192,11 +150,64 @@ public class RoomListScreen extends Screen {
     private int cols = 1;
     /** 칸(slot)별로 지금 보이는 방과 좌상단 좌표. slot = 화면상 열 * rows + 행. */
     private PublicRoomBrowser.RoomEntry[] rowRoom = new PublicRoomBrowser.RoomEntry[0];
-    /** 칸별로 "삭제됨"(방장이 닫았거나 끊긴 방)인지 — 회색 표시·선택 막기용. 정리 버튼·스크롤 전까지 자리에 남는다. */
+    /** 칸별로 "삭제됨"(방장이 닫았거나 끊긴 방)인지 — 회색 표시·선택 막기용. 짧은 유예 후 자동 제거된다. */
     private boolean[] rowRemoved = new boolean[0];
     private int[] rowX = new int[0];
     private int[] rowY = new int[0];
     private String searchQuery = "";
+    private boolean joinableOnly;
+    private RoomFilters extraFilters = new RoomFilters(0, 0,
+            kfc.udp.client.webrtc.P2PConfig.isHideOtherVersions());
+    private int sortOrder;
+    private static final String[] SORT_KEYS = {"uptime_desc", "uptime_asc", "players_desc", "players_asc", "title_asc", "title_desc"};
+    private long retryAfterMs;
+
+    private String sortKey() { return "instant-p2p.room_list.sort." + SORT_KEYS[this.sortOrder]; }
+    private int activeFilterCount() {
+        return this.extraFilters.activeCount() + (this.joinableOnly ? 1 : 0)
+                + (kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter() != kfc.udp.client.webrtc.P2PConfig.BroadcastFilter.ALL ? 1 : 0);
+    }
+
+    void applyFilters(boolean joinable, kfc.udp.client.webrtc.P2PConfig.BroadcastFilter broadcast, RoomFilters extra) {
+        if (!extra.valid()) return;
+        this.extraFilters = extra;
+        this.joinableOnly = joinable;
+        kfc.udp.client.webrtc.P2PConfig.setHideOtherVersions(extra.sameVersionOnly());
+        kfc.udp.client.webrtc.P2PConfig.setBroadcastFilter(broadcast);
+        this.scrollCol = 0;
+        this.filterSource = null;
+    }
+
+    private java.util.Comparator<PublicRoomBrowser.RoomEntry> roomComparator() {
+        java.util.Comparator<PublicRoomBrowser.RoomEntry> order = switch (this.sortOrder) {
+            case 1 -> java.util.Comparator.comparingLong(PublicRoomBrowser.RoomEntry::openedAtMs).reversed();
+            case 2 -> java.util.Comparator.comparingInt(PublicRoomBrowser.RoomEntry::currentPlayers).reversed();
+            case 3 -> java.util.Comparator.comparingInt(PublicRoomBrowser.RoomEntry::currentPlayers);
+            case 4 -> java.util.Comparator.comparing(PublicRoomBrowser.RoomEntry::title, String.CASE_INSENSITIVE_ORDER);
+            case 5 -> java.util.Comparator.comparing(PublicRoomBrowser.RoomEntry::title, String.CASE_INSENSITIVE_ORDER).reversed();
+            default -> java.util.Comparator.comparingLong(PublicRoomBrowser.RoomEntry::openedAtMs);
+        };
+        return order.thenComparing(PublicRoomBrowser.RoomEntry::code);
+    }
+
+    private boolean hasCapacityPerk() {
+        String id = this.myUuid();
+        return id != null && kfc.udp.client.DevBadge.hasPerk(java.util.UUID.fromString(id));
+    }
+
+    private boolean canJoin(PublicRoomBrowser.RoomEntry room) {
+        return room.sameVersion() && !this.missingSince.containsKey(room.code())
+                && (room.maxPlayers() <= 0 || room.currentPlayers() < room.maxPlayers() || this.hasCapacityPerk());
+    }
+
+    private String emptyStateKey() {
+        return switch (this.browser.state()) {
+            case LOADING -> "instant-p2p.room_list.loading";
+            case RECONNECTING -> "instant-p2p.room_list.connection_failed";
+            case READY -> this.browser.getCurrentRooms().isEmpty()
+                    ? "instant-p2p.room_list.empty" : "instant-p2p.room_list.filtered_empty";
+        };
+    }
     /** 검색어까지 반영된 현재 목록 — 화면에 보이는 칸뿐 아니라 빠른 시작이 무작위로 고를
      * 전체 후보 풀로도 쓴다. */
     private List<PublicRoomBrowser.RoomEntry> filteredRooms = List.of();
@@ -209,7 +220,7 @@ public class RoomListScreen extends Screen {
     @Nullable private EditBox codeField;
     @Nullable private Button joinButton;
     @Nullable private Button quickStartButton;
-    @Nullable private Button cleanupButton;
+    @Nullable private Button listActionButton;
     *///?} else {
     private final java.util.List<ButtonWidget> rowButtons = new java.util.ArrayList<>();
     @Nullable private TextWidget emptyLabel;
@@ -217,7 +228,7 @@ public class RoomListScreen extends Screen {
     @Nullable private TextFieldWidget codeField;
     @Nullable private ButtonWidget joinButton;
     @Nullable private ButtonWidget quickStartButton;
-    @Nullable private ButtonWidget cleanupButton;
+    @Nullable private ButtonWidget listActionButton;
     //?}
 
     public RoomListScreen(Screen parent) {
@@ -230,17 +241,11 @@ public class RoomListScreen extends Screen {
     protected void init() {
         int cx = this.width / 2;
         int listX = cx - ROW_W / 2;
-        // 하단 섹션은 버튼(20px)을 4px 간격으로 촘촘히 쌓는다 — 가로 스크롤바가 구분선 바로 밑으로 내려와서
-        // 가운데(방 목록) 섹션이 행 하나를 더 쓸 수 있게.
         this.cancelY = this.height - 24;
         this.codeRowY = this.cancelY - 24;
-        // "초대코드로 입장" 행은 오른쪽에 차단 목록 버튼이 붙으므로 버튼 한 줄(20px) 높이로
-        // 잡고, 제목 글자는 그 행 안에서 세로 가운데에 둔다.
         int sectionRowY = this.codeRowY - 24;
-        this.divider2Y = sectionRowY - 8; // 구분선 밑 1~7px = 가로 스크롤바 자리
+        this.divider2Y = sectionRowY - 8;
 
-        // 채널 설정 버튼 — 채널 값은 별도 화면(ChannelScreen)에서만 보인다(방송 화면에 채널이 드러나지 않게).
-        // cx-155는 CustomRoomScreen의 Regen Invite(우측 상단, (cx+155)-100)와 중심 기준 좌우반전된 위치.
         this.addRenderableWidget(Button.builder(CHANNEL_SETTINGS_TEXT, b ->
                         Objects.requireNonNull(this.minecraft).setScreenAndShow(new ChannelScreen(this)))
                 .bounds(cx - 155, CHANNEL_Y, CHANNEL_FIELD_W, CHANNEL_FIELD_H).build());
@@ -261,57 +266,27 @@ public class RoomListScreen extends Screen {
                         .build()
         );
 
-        // 초대코드 입력란 바로 위 줄 — 체크박스 둘을 가로로 이어 붙여 화면 가운데에 둔다(라벨 길이가 언어마다 달라
-        // 만든 뒤 폭을 잰다).
-        // Checkbox.Builder.build()의 tooltip()은 라벨이 한 줄을 넘칠 때만(overflowsRowLimit) 실제로
-        // setTooltip을 불러준다(바이트코드로 확인) — 우리 라벨은 전부 한 줄이라 빌더로는 절대 안 뜬다.
-        // build() 뒤에 Checkbox.setTooltip을 직접 불러야 라벨 길이와 무관하게 항상 붙는다.
-        var hideVersionsCheckbox = Checkbox.builder(HIDE_OTHER_VERSIONS_TEXT, this.font)
-                .pos(0, sectionRowY + CHECKBOX_DY)
-                .selected(kfc.udp.client.webrtc.P2PConfig.isHideOtherVersions())
-                .onValueChange((cb, value) -> {
-                    kfc.udp.client.webrtc.P2PConfig.setHideOtherVersions(value);
-                    this.refreshRooms();
-                })
-                .build();
-        hideVersionsCheckbox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(HIDE_OTHER_VERSIONS_TOOLTIP_TEXT));
         var forceRelayCheckbox = Checkbox.builder(FORCE_RELAY_TEXT, this.font)
                 .pos(0, sectionRowY + CHECKBOX_DY)
                 .selected(kfc.udp.client.webrtc.P2PConfig.isRelayOnly())
-                .onValueChange((cb, value) -> kfc.udp.client.webrtc.P2PConfig.setRelayOnly(value))
-                .build();
-        forceRelayCheckbox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(FORCE_RELAY_TOOLTIP_TEXT));
-        // 오른쪽에 하나 더 — 방송 필터. 체크박스(2상태)로는 "비방송만 보기"를 표현할 수 없어서 순환
-        // 버튼(전체/허용만/비허용만 3상태)으로 둔다. 순수 로컬 필터 — PublicRoomAnnouncer가 채널
-        // 문자열에 붙이는 태그를 읽기만 한다(P2PConfig.announcedChannel/isBroadcastTagged 참고).
-        int broadcastFilterW = 130;
-        var broadcastFilterButton = net.minecraft.client.gui.components.CycleButton.builder(
-                        (kfc.udp.client.webrtc.P2PConfig.BroadcastFilter f) -> Component.translatable(
-                                "instant-p2p.room_list.broadcast_filter." + broadcastFilterKey(f)),
-                        kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter())
-                .withValues(kfc.udp.client.webrtc.P2PConfig.BroadcastFilter.values())
-                .withTooltip(f -> net.minecraft.client.gui.components.Tooltip.create(Component.translatable(
-                        "instant-p2p.room_list.broadcast_filter_tooltip." + broadcastFilterKey(f))))
-                .create(0, sectionRowY, broadcastFilterW, 20, BROADCAST_FILTER_TEXT, (btn, value) -> {
-                    kfc.udp.client.webrtc.P2PConfig.setBroadcastFilter(value);
-                    this.refreshRooms();
-                });
-        // 왼쪽부터 다른 버전 숨기기 · 방송 필터(가운데) · 중계 통신 강제(오른쪽) 순으로 배치한다.
-        int checkboxesW = hideVersionsCheckbox.getWidth() + CHECKBOX_GAP + broadcastFilterW
-                + CHECKBOX_GAP + forceRelayCheckbox.getWidth();
-        int checkboxX = cx - checkboxesW / 2;
-        hideVersionsCheckbox.setX(checkboxX);
-        broadcastFilterButton.setX(checkboxX + hideVersionsCheckbox.getWidth() + CHECKBOX_GAP);
-        forceRelayCheckbox.setX(broadcastFilterButton.getX() + broadcastFilterW + CHECKBOX_GAP);
-        this.addRenderableWidget(hideVersionsCheckbox);
+                .onValueChange((cb, value) -> kfc.udp.client.webrtc.P2PConfig.setRelayOnly(value)).build();
+        forceRelayCheckbox.setTooltip(Tooltip.create(FORCE_RELAY_TOOLTIP_TEXT));
+        forceRelayCheckbox.setX(cx - forceRelayCheckbox.getWidth() / 2);
         this.addRenderableWidget(forceRelayCheckbox);
-        this.addRenderableWidget(broadcastFilterButton);
 
-        // 검색 줄 — 왼쪽 삭제된 방 정리(채널 설정 버튼과 왼쪽 끝을 맞춤), 오른쪽 차단 목록(랜덤 접속과 오른쪽 끝을 맞춤,
-        // 아래에서 추가), 가운데 검색창이 그 사이를 6px씩 띄우고 채운다.
-        this.cleanupButton = Button.builder(CLEANUP_TEXT, b -> this.onCleanupClicked())
-                .bounds(cx - 155, SEARCH_Y, REFRESH_W, 20).build();
-        this.addRenderableWidget(this.cleanupButton);
+        // 정렬 · 검색 · 차단 목록, 다음 줄에 상세 필터와 초기화/재시도 버튼.
+        this.addRenderableWidget(Button.builder(Component.translatable(this.sortKey()), b -> {
+                    this.sortOrder = (this.sortOrder + 1) % SORT_KEYS.length;
+                    b.setMessage(Component.translatable(this.sortKey()));
+                    this.scrollCol = 0;
+                    this.refreshRooms();
+                }).bounds(cx - 155, SEARCH_Y, REFRESH_W, 20).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("instant-p2p.filters.button", this.activeFilterCount()), b ->
+                    Objects.requireNonNull(this.minecraft).setScreenAndShow(new RoomFilterScreen(this, this.joinableOnly, this.extraFilters)))
+                .bounds(cx - 155, SEARCH_Y + 24, 150, 20).build());
+        this.listActionButton = Button.builder(Component.translatable("instant-p2p.room_list.reset_filters"), b -> this.onListAction())
+                .bounds(cx + 5, SEARCH_Y + 24, 150, 20).build();
+        this.addRenderableWidget(this.listActionButton);
         int searchFieldW = 2 * (155 - REFRESH_W - 6);
         this.searchField = new EditBox(this.font, cx - searchFieldW / 2, SEARCH_Y, searchFieldW, 20, SEARCH_LABEL_TEXT);
         this.searchField.setMaxLength(32);
@@ -320,6 +295,7 @@ public class RoomListScreen extends Screen {
             this.searchQuery = text;
             this.refreshRooms();
         });
+        this.searchField.setValue(this.searchQuery);
         this.addRenderableWidget(this.searchField);
 
         // 열 수 = 좌우 여백 안에 칸이 들어가는 만큼. 행 수 = 위 구분선(LIST_Y는 그 6px 아래)부터 아래
@@ -348,6 +324,7 @@ public class RoomListScreen extends Screen {
         this.emptyLabel.setY(LIST_Y);
         this.addRenderableWidget(this.emptyLabel);
 
+        String draftCode = this.codeField != null ? this.codeField.getValue() : "";
         this.codeField = new EditBox(this.font, cx - CODE_FIELD_W / 2, this.codeRowY, CODE_FIELD_W, 20, CODE_LABEL_TEXT);
         this.codeField.setMaxLength(20);
         this.codeField.setHint(Component.translatable("instant-p2p.join_room.code_placeholder").withStyle(ChatFormatting.DARK_GRAY));
@@ -359,6 +336,7 @@ public class RoomListScreen extends Screen {
                 .build();
         this.joinButton.active = false;
         this.addRenderableWidget(this.joinButton);
+        this.codeField.setValue(draftCode);
 
         this.addRenderableWidget(
                 Button.builder(CommonComponents.GUI_CANCEL, b -> this.onClose())
@@ -377,24 +355,17 @@ public class RoomListScreen extends Screen {
         this.setInitialFocus(this.codeField);
         this.browser.start();
         this.refreshRooms();
-        this.updateCleanupButton();
     }
     *///?} else {
     @Override
     protected void init() {
         int cx = this.width / 2;
         int listX = cx - ROW_W / 2;
-        // 하단 섹션은 버튼(20px)을 4px 간격으로 촘촘히 쌓는다 — 가로 스크롤바가 구분선 바로 밑으로 내려와서
-        // 가운데(방 목록) 섹션이 행 하나를 더 쓸 수 있게.
         this.cancelY = this.height - 24;
         this.codeRowY = this.cancelY - 24;
-        // "초대코드로 입장" 행은 오른쪽에 차단 목록 버튼이 붙으므로 버튼 한 줄(20px) 높이로
-        // 잡고, 제목 글자는 그 행 안에서 세로 가운데에 둔다.
         int sectionRowY = this.codeRowY - 24;
-        this.divider2Y = sectionRowY - 8; // 구분선 밑 1~7px = 가로 스크롤바 자리
+        this.divider2Y = sectionRowY - 8;
 
-        // 채널 설정 버튼 — 채널 값은 별도 화면(ChannelScreen)에서만 보인다(방송 화면에 채널이 드러나지 않게).
-        // cx-155는 CustomRoomScreen의 Regen Invite(우측 상단, (cx+155)-100)와 중심 기준 좌우반전된 위치.
         this.addDrawableChild(ButtonWidget.builder(CHANNEL_SETTINGS_TEXT, b ->
                         Objects.requireNonNull(this.client).setScreen(new ChannelScreen(this)))
                 .dimensions(cx - 155, CHANNEL_Y, CHANNEL_FIELD_W, CHANNEL_FIELD_H).build());
@@ -415,69 +386,27 @@ public class RoomListScreen extends Screen {
                         .build()
         );
 
-        // 초대코드 입력란 바로 위 줄 — 체크박스 둘을 가로로 이어 붙여 화면 가운데에 둔다(라벨 길이가 언어마다 달라
-        // 만든 뒤 폭을 잰다).
-        var hideVersionsCheckbox = CheckboxWidget.builder(HIDE_OTHER_VERSIONS_TEXT, this.textRenderer)
-                .pos(0, sectionRowY + CHECKBOX_DY)
-                .checked(kfc.udp.client.webrtc.P2PConfig.isHideOtherVersions())
-                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(HIDE_OTHER_VERSIONS_TOOLTIP_TEXT))
-                .callback((cb, value) -> {
-                    kfc.udp.client.webrtc.P2PConfig.setHideOtherVersions(value);
-                    this.refreshRooms();
-                })
-                .build();
         var forceRelayCheckbox = CheckboxWidget.builder(FORCE_RELAY_TEXT, this.textRenderer)
                 .pos(0, sectionRowY + CHECKBOX_DY)
                 .checked(kfc.udp.client.webrtc.P2PConfig.isRelayOnly())
-                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(FORCE_RELAY_TOOLTIP_TEXT))
-                .callback((cb, value) -> kfc.udp.client.webrtc.P2PConfig.setRelayOnly(value))
-                .build();
-        // 오른쪽에 하나 더 — 방송 필터. 체크박스(2상태)로는 "비방송만 보기"를 표현할 수 없어서 순환
-        // 버튼(전체/허용만/비허용만 3상태)으로 둔다. 순수 로컬 필터 — PublicRoomAnnouncer가 채널
-        // 문자열에 붙이는 태그를 읽기만 한다(P2PConfig.announcedChannel/isBroadcastTagged 참고).
-        int broadcastFilterW = 130;
-        //? if >=1.21.11 <26.1 {
-        /*var broadcastFilterButton = CyclingButtonWidget.builder(
-                        (kfc.udp.client.webrtc.P2PConfig.BroadcastFilter f) -> Text.translatable(
-                                "instant-p2p.room_list.broadcast_filter." + broadcastFilterKey(f)),
-                        kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter())
-                .values(kfc.udp.client.webrtc.P2PConfig.BroadcastFilter.values())
-                .tooltip(f -> net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable(
-                        "instant-p2p.room_list.broadcast_filter_tooltip." + broadcastFilterKey(f))))
-                .build(0, sectionRowY, broadcastFilterW, 20, BROADCAST_FILTER_TEXT, (btn, value) -> {
-                    kfc.udp.client.webrtc.P2PConfig.setBroadcastFilter(value);
-                    this.refreshRooms();
-                });
-        *///?}
-        //? if <1.21.11 {
-        var broadcastFilterButton = CyclingButtonWidget.builder(
-                        (kfc.udp.client.webrtc.P2PConfig.BroadcastFilter f) -> Text.translatable(
-                                "instant-p2p.room_list.broadcast_filter." + broadcastFilterKey(f)))
-                .values(kfc.udp.client.webrtc.P2PConfig.BroadcastFilter.values())
-                .initially(kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter())
-                .tooltip(f -> net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable(
-                        "instant-p2p.room_list.broadcast_filter_tooltip." + broadcastFilterKey(f))))
-                .build(0, sectionRowY, broadcastFilterW, 20, BROADCAST_FILTER_TEXT, (btn, value) -> {
-                    kfc.udp.client.webrtc.P2PConfig.setBroadcastFilter(value);
-                    this.refreshRooms();
-                });
-        //?}
-        // 왼쪽부터 다른 버전 숨기기 · 방송 필터(가운데) · 중계 통신 강제(오른쪽) 순으로 배치한다.
-        int checkboxesW = hideVersionsCheckbox.getWidth() + CHECKBOX_GAP + broadcastFilterW
-                + CHECKBOX_GAP + forceRelayCheckbox.getWidth();
-        int checkboxX = cx - checkboxesW / 2;
-        hideVersionsCheckbox.setX(checkboxX);
-        broadcastFilterButton.setX(checkboxX + hideVersionsCheckbox.getWidth() + CHECKBOX_GAP);
-        forceRelayCheckbox.setX(broadcastFilterButton.getX() + broadcastFilterW + CHECKBOX_GAP);
-        this.addDrawableChild(hideVersionsCheckbox);
+                .callback((cb, value) -> kfc.udp.client.webrtc.P2PConfig.setRelayOnly(value)).build();
+        forceRelayCheckbox.setTooltip(Tooltip.of(FORCE_RELAY_TOOLTIP_TEXT));
+        forceRelayCheckbox.setX(cx - forceRelayCheckbox.getWidth() / 2);
         this.addDrawableChild(forceRelayCheckbox);
-        this.addDrawableChild(broadcastFilterButton);
 
-        // 검색 줄 — 왼쪽 삭제된 방 정리(채널 설정 버튼과 왼쪽 끝을 맞춤), 오른쪽 차단 목록(랜덤 접속과 오른쪽 끝을 맞춤,
-        // 아래에서 추가), 가운데 검색창이 그 사이를 6px씩 띄우고 채운다.
-        this.cleanupButton = ButtonWidget.builder(CLEANUP_TEXT, b -> this.onCleanupClicked())
-                .dimensions(cx - 155, SEARCH_Y, REFRESH_W, 20).build();
-        this.addDrawableChild(this.cleanupButton);
+        // 정렬 · 검색 · 차단 목록, 다음 줄에 상세 필터와 초기화/재시도 버튼.
+        this.addDrawableChild(ButtonWidget.builder(Text.translatable(this.sortKey()), b -> {
+                    this.sortOrder = (this.sortOrder + 1) % SORT_KEYS.length;
+                    b.setMessage(Text.translatable(this.sortKey()));
+                    this.scrollCol = 0;
+                    this.refreshRooms();
+                }).dimensions(cx - 155, SEARCH_Y, REFRESH_W, 20).build());
+        this.addDrawableChild(ButtonWidget.builder(Text.translatable("instant-p2p.filters.button", this.activeFilterCount()), b ->
+                    Objects.requireNonNull(this.client).setScreen(new RoomFilterScreen(this, this.joinableOnly, this.extraFilters)))
+                .dimensions(cx - 155, SEARCH_Y + 24, 150, 20).build());
+        this.listActionButton = ButtonWidget.builder(Text.translatable("instant-p2p.room_list.reset_filters"), b -> this.onListAction())
+                .dimensions(cx + 5, SEARCH_Y + 24, 150, 20).build();
+        this.addDrawableChild(this.listActionButton);
         int searchFieldW = 2 * (155 - REFRESH_W - 6);
         this.searchField = new TextFieldWidget(this.textRenderer, cx - searchFieldW / 2, SEARCH_Y, searchFieldW, 20, SEARCH_LABEL_TEXT);
         this.searchField.setMaxLength(32);
@@ -486,6 +415,7 @@ public class RoomListScreen extends Screen {
             this.searchQuery = text;
             this.refreshRooms();
         });
+        this.searchField.setText(this.searchQuery);
         this.addDrawableChild(this.searchField);
 
         // 열 수 = 좌우 여백 안에 칸이 들어가는 만큼. 행 수 = 위 구분선(LIST_Y는 그 6px 아래)부터 아래
@@ -514,6 +444,7 @@ public class RoomListScreen extends Screen {
         this.emptyLabel.setY(LIST_Y);
         this.addDrawableChild(this.emptyLabel);
 
+        String draftCode = this.codeField != null ? this.codeField.getText() : "";
         this.codeField = new TextFieldWidget(this.textRenderer, cx - CODE_FIELD_W / 2, this.codeRowY, CODE_FIELD_W, 20, CODE_LABEL_TEXT);
         this.codeField.setMaxLength(20);
         this.codeField.setPlaceholder(Text.translatable("instant-p2p.join_room.code_placeholder").formatted(net.minecraft.util.Formatting.DARK_GRAY));
@@ -525,6 +456,7 @@ public class RoomListScreen extends Screen {
                 .build();
         this.joinButton.active = false;
         this.addDrawableChild(this.joinButton);
+        this.codeField.setText(draftCode);
 
         this.addDrawableChild(
                 ButtonWidget.builder(ScreenTexts.CANCEL, b -> this.close())
@@ -543,7 +475,6 @@ public class RoomListScreen extends Screen {
         this.setInitialFocus(this.codeField);
         this.browser.start();
         this.refreshRooms();
-        this.updateCleanupButton();
     }
     //?}
 
@@ -551,7 +482,6 @@ public class RoomListScreen extends Screen {
     public void tick() {
         super.tick();
         this.refreshRooms();
-        this.updateCleanupButton();
     }
 
     //? if >=26.1 {
@@ -584,13 +514,9 @@ public class RoomListScreen extends Screen {
      * (P2PBanManager 클래스 주석 참고). */
     // 방 목록 갱신 — 항상 서버 목록을 그대로 따라간다(새 방은 바로 들어온다). 사라진 방은 바로 빼지 않는다 — 인원이
     // 바뀔 때 방장이 재공지하느라 잠깐(보통 1초 안) 끊겼다 다시 붙으므로 FLICKER_GRACE_MS 동안은 원래대로 두고, 그 뒤로도
-    // 없으면 "삭제됨"으로 표시만 하고 자리에 남긴다. 정리 버튼을 누르거나 목록을 스크롤할 때 뺀다(cleanupRemoved) —
-    // 고르려던 방이 멋대로 자리를 옮기지 않게. 정렬은 연 시각 순(오래된 방이 앞)이라 새 방은 뒤에 붙는다.
+    // 없으면 필터 적용 전의 전체 캐시에서 자동 제거한다. 정렬은 사용자가 선택한다.
     private static final long FLICKER_GRACE_MS = 1_500;
-    private static final long CLEANUP_COOLDOWN_MS = 1_000;
-    /** 검색 줄 왼쪽 삭제된 방 정리 버튼 폭(차단 목록 버튼과 같은 폭으로 좌우 대칭). */
-    private static final int REFRESH_W = 90;
-    private long cleanupCooldownUntilMs;
+    /** 검색 줄 양쪽의 정렬·차단 목록 버튼 폭. */
     private List<PublicRoomBrowser.RoomEntry> liveSource;
     /** 지금 보여주는 방(살아 있는 방 + 삭제됨 표시 방) — 코드 → 마지막으로 받은 정보. */
     private final java.util.Map<String, PublicRoomBrowser.RoomEntry> shown = new java.util.HashMap<>();
@@ -600,7 +526,10 @@ public class RoomListScreen extends Screen {
     /** 보여줄 목록 — 구성이 바뀔 때만 새 리스트를 만들어서, 참조가 같으면 내용도 같다(필터 캐시가 이걸 믿는다). */
     private List<PublicRoomBrowser.RoomEntry> displayRooms() {
         List<PublicRoomBrowser.RoomEntry> live = this.browser.getCurrentRooms();
-        if (live == this.liveSource) return this.displayList;
+        if (live == this.liveSource) {
+            this.cleanupRemoved();
+            return this.displayList;
+        }
         this.liveSource = live;
         long now = System.currentTimeMillis();
         java.util.Map<String, PublicRoomBrowser.RoomEntry> liveByCode = new java.util.HashMap<>();
@@ -615,6 +544,7 @@ public class RoomListScreen extends Screen {
                 this.missingSince.putIfAbsent(e.getKey(), now);
             }
         }
+        this.cleanupRemoved();
         this.rebuildDisplayList();
         return this.displayList;
     }
@@ -642,7 +572,7 @@ public class RoomListScreen extends Screen {
         this.scrollCol = 0;
     }
 
-    /** "삭제됨" 방을 목록에서 뺀다 — 정리 버튼·스크롤 때. */
+    /** 필터에서 숨겨진 항목을 포함해 전체 캐시의 종료된 방을 매 tick 정리한다. */
     private void cleanupRemoved() {
         boolean changed = false;
         var it = this.missingSince.entrySet().iterator();
@@ -656,13 +586,26 @@ public class RoomListScreen extends Screen {
         if (changed) this.rebuildDisplayList();
     }
 
-    private void onCleanupClicked() {
-        long now = System.currentTimeMillis();
-        if (now < this.cleanupCooldownUntilMs) return;
-        this.cleanupCooldownUntilMs = now + CLEANUP_COOLDOWN_MS;
-        this.cleanupRemoved();
+    private void onListAction() {
+        if (this.browser.state() == PublicRoomBrowser.State.RECONNECTING) {
+            this.retryAfterMs = System.currentTimeMillis() + 2_000;
+            this.onChannelsChanged();
+        } else {
+            this.joinableOnly = false;
+            this.extraFilters = RoomFilters.ALL;
+            this.filterSource = null;
+            kfc.udp.client.webrtc.P2PConfig.setHideOtherVersions(false);
+            kfc.udp.client.webrtc.P2PConfig.setBroadcastFilter(kfc.udp.client.webrtc.P2PConfig.BroadcastFilter.ALL);
+            this.searchQuery = "";
+            this.scrollCol = 0;
+            // Recreate checkboxes so their state agrees with the reset filters.
+            //? if >=26.1 {
+            /*this.rebuildWidgets();
+            *///?} else {
+            this.clearAndInit();
+            //?}
+        }
         this.refreshRooms();
-        this.updateCleanupButton();
     }
 
     private void refreshRooms() {
@@ -673,7 +616,8 @@ public class RoomListScreen extends Screen {
         // 실제로 이 버그였다.
         String channel = kfc.udp.client.webrtc.P2PConfig.getChannelKey()
                 + (kfc.udp.client.webrtc.P2PConfig.isHideOtherVersions() ? "#v" : "")
-                + "#b" + kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter();
+                + "#b" + kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter()
+                + "#sort" + this.sortOrder + "#join" + this.joinableOnly + "#perk" + this.hasCapacityPerk();
         int banVersion = kfc.udp.client.webrtc.P2PBanManager.banListVersion();
         if (all != this.filterSource || !channel.equals(this.filterChannel)
                 || !this.searchQuery.equals(this.filterQuery) || banVersion != this.filterBanVersion) {
@@ -681,12 +625,12 @@ public class RoomListScreen extends Screen {
             String q = this.searchQuery.trim().toLowerCase(Locale.ROOT);
             List<String> mine = kfc.udp.client.webrtc.P2PConfig.getChannels();
             boolean mineAnd = kfc.udp.client.webrtc.P2PConfig.isChannelAnd();
-            boolean hideOtherVersions = kfc.udp.client.webrtc.P2PConfig.isHideOtherVersions();
             kfc.udp.client.webrtc.P2PConfig.BroadcastFilter broadcastFilter = kfc.udp.client.webrtc.P2PConfig.getBroadcastFilter();
             this.filteredRooms = all.stream()
                     .filter(r -> kfc.udp.client.webrtc.P2PConfig.roomVisible(
                             kfc.udp.client.webrtc.P2PConfig.stripBroadcastTag(r.channel()), r.channelAnd(), mine, mineAnd))
-                    .filter(r -> !hideOtherVersions || r.sameVersion())
+                    .filter(r -> this.extraFilters.matches(r.currentPlayers(), r.maxPlayers(), r.version(), kfc.udp.client.webrtc.P2PConfig.MC_VERSION))
+                    .filter(r -> !this.joinableOnly || this.canJoin(r))
                     .filter(r -> switch (broadcastFilter) {
                         case ALL -> true;
                         case ALLOWED_ONLY -> kfc.udp.client.webrtc.P2PConfig.isBroadcastTagged(r.channel());
@@ -697,6 +641,7 @@ public class RoomListScreen extends Screen {
                     .filter(r -> q.isEmpty()
                             || r.title().toLowerCase(Locale.ROOT).contains(q)
                             || r.hostNickname().toLowerCase(Locale.ROOT).contains(q))
+                    .sorted(this.roomComparator())
                     .toList();
             this.filterSource = all;
             this.filterChannel = channel;
@@ -731,13 +676,33 @@ public class RoomListScreen extends Screen {
             }
         }
 
-        if (this.emptyLabel != null) this.emptyLabel.visible = rooms.isEmpty();
+        if (this.emptyLabel != null) {
+            this.emptyLabel.visible = rooms.isEmpty();
+            //? if >=26.1 {
+            /*this.emptyLabel.setMessage(Component.translatable(this.emptyStateKey()));
+            this.emptyLabel.setWidth(this.font.width(this.emptyLabel.getMessage()));
+            *///?} else {
+            this.emptyLabel.setMessage(Text.translatable(this.emptyStateKey()));
+            this.emptyLabel.setWidth(this.textRenderer.getWidth(this.emptyLabel.getMessage()));
+            //?}
+            this.emptyLabel.setX((this.width - this.emptyLabel.getWidth()) / 2);
+        }
+        if (this.listActionButton != null) {
+            String key = this.browser.state() == PublicRoomBrowser.State.RECONNECTING
+                    ? "instant-p2p.room_list.retry" : "instant-p2p.room_list.reset_filters";
+            //? if >=26.1 {
+            /*this.listActionButton.setMessage(Component.translatable(key));
+            *///?} else {
+            this.listActionButton.setMessage(Text.translatable(key));
+            //?}
+            this.listActionButton.active = System.currentTimeMillis() >= this.retryAfterMs;
+        }
         if (this.quickStartButton != null) this.quickStartButton.active = !this.joinableRooms().isEmpty();
     }
 
     /** 지금 들어갈 수 있는 방 — 삭제됨·다른 버전은 뺀다. */
     private List<PublicRoomBrowser.RoomEntry> joinableRooms() {
-        return this.filteredRooms.stream().filter(r -> r.sameVersion() && !this.isRemoved(r.code())).toList();
+        return this.filteredRooms.stream().filter(this::canJoin).toList();
     }
 
     /** 방 칸 클릭 = 바로 접속. 삭제됨·다른 버전 방은 눌러도 접속 실패만 뜨므로 막는다. */
@@ -1379,11 +1344,6 @@ public class RoomListScreen extends Screen {
 
     *///?}
 
-    // 정리 버튼 — 누르고 1초 동안은 다시 못 누른다. 매 tick 부른다.
-    private void updateCleanupButton() {
-        if (this.cleanupButton == null) return;
-        this.cleanupButton.active = System.currentTimeMillis() >= this.cleanupCooldownUntilMs;
-    }
     //? if >=1.21.6 <26.1 {
     /*private void drawPingSprite(DrawContext context, String sprite, int x, int y) {
         context.drawGuiTexture(net.minecraft.client.gl.RenderPipelines.GUI_TEXTURED,
