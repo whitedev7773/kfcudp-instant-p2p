@@ -56,6 +56,7 @@ public class CustomRoomScreen extends Screen {
     private static final int ROW3_Y  = DIVIDER1_Y + 28;
     private static final int ROW_H         = 22;
     private static final int VISIBLE_ROWS  = 3;
+    private boolean advancedExpanded;
 
     /** 옵션 체크박스 스크롤 영역 — 지금은 3개지만 앞으로 늘어날 걸 대비해 한 화면에
      * {@link #VISIBLE_ROWS}개씩만 보여주고 마우스 휠로 넘긴다. 공개 허용 행과의
@@ -156,6 +157,8 @@ public class CustomRoomScreen extends Screen {
     /*@Nullable private EditBox maxPlayersField;
     @Nullable private EditBox titleField;
     @Nullable private Button    startButton;
+    @Nullable private Button channelButton;
+    @Nullable private Button previousOptionsButton, nextOptionsButton;
     @Nullable private Button    settingsApplyButton;
     private final List<Checkbox> optionCheckboxes = new ArrayList<>();
     // 경고 팝업을 취소했을 때 되돌리려면 실제 위젯을 다시 만들어 갈아 끼워야 한다(체크박스는
@@ -165,6 +168,8 @@ public class CustomRoomScreen extends Screen {
     @Nullable private TextFieldWidget maxPlayersField;
     @Nullable private TextFieldWidget titleField;
     @Nullable private ButtonWidget    startButton;
+    @Nullable private ButtonWidget channelButton;
+    @Nullable private ButtonWidget previousOptionsButton, nextOptionsButton;
     @Nullable private ButtonWidget    settingsApplyButton;
     private final List<CheckboxWidget> optionCheckboxes = new ArrayList<>();
     // 경고 팝업을 취소했을 때 되돌리려면 실제 위젯을 다시 만들어 갈아 끼워야 한다(체크박스는
@@ -249,12 +254,26 @@ public class CustomRoomScreen extends Screen {
                     .build());
         }
 
-        // 채널 설정 버튼 — 위 재생성/시작 버튼(우측 상단 자리)과 중심 기준 좌우반전된 위치(좌측 상단).
-        // RoomListScreen과 똑같은 좌표라 호스트/접속자 화면 어디서든 같은 자리에 뜬다. 채널 값은 그 화면(ChannelScreen)
-        // 안에서만 보이고, 적용하면 공개 중인 방은 바로 다시 공지된다 — 이 화면의 적용 버튼과는 무관하다.
-        this.addRenderableWidget(Button.builder(CHANNEL_SETTINGS_TEXT, b ->
+        // 기본 설정 아래에서 고급 옵션을 펼친다. 채널은 고급 영역에서만 진입 가능하다.
+        // 채널 적용은 기존처럼 ChannelScreen에서 즉시 반영된다.
+        this.channelButton = Button.builder(CHANNEL_SETTINGS_TEXT, b ->
                         Objects.requireNonNull(this.minecraft).setScreenAndShow(new ChannelScreen(this)))
-                .bounds(cx - 155, RoomListScreen.CHANNEL_Y, APPLY_BUTTON_W, 20).build());
+                .bounds(cx + 5, LIST_Y, 150, 20).build();
+        this.addRenderableWidget(this.channelButton);
+        this.addRenderableWidget(Button.builder(Component.translatable(this.advancedKey()), b -> {
+                    this.advancedExpanded = !this.advancedExpanded;
+                    b.setMessage(Component.translatable(this.advancedKey()));
+                    this.repositionCheckboxes();
+                }).bounds(cx - 155, LIST_Y, 150, 20).build());
+        this.previousOptionsButton = Button.builder(Component.literal("<"), b -> this.scrollOptions(-1))
+                .bounds(cx + 105, LIST_Y + 24, 22, 20)
+                .tooltip(Tooltip.create(Component.translatable("instant-p2p.custom_room.previous_options"))).build();
+        this.nextOptionsButton = Button.builder(Component.literal(">"), b -> this.scrollOptions(1))
+                .bounds(cx + 133, LIST_Y + 24, 22, 20)
+                .tooltip(Tooltip.create(Component.translatable("instant-p2p.custom_room.next_options"))).build();
+        this.addRenderableWidget(this.previousOptionsButton);
+        this.addRenderableWidget(this.nextOptionsButton);
+
 
         // 방 옵션 전체 통합 적용 버튼 — 게임모드/정원/공개 허용/제목/치트/관리 명령어를
         // 한 번에 반영한다(onApplyButtonClicked/refreshSettingsApplyButton 참고).
@@ -282,13 +301,12 @@ public class CustomRoomScreen extends Screen {
         // 라벨(영어 기준)과 안 겹치는 선에서, 오른쪽은 게임모드/정원 행과 맞춘다.
         int titleFieldX = cx - 60;
         int titleFieldW = (cx + 155) - titleFieldX;
+        String draftTitle = this.titleField != null ? this.titleField.getValue()
+                : this.editingActiveRoom ? KfcudpClient.getActiveTitle() : "";
         this.titleField = new EditBox(this.font, titleFieldX, ROW3_Y, titleFieldW, 20, TITLE_PLACEHOLDER_TEXT);
         this.titleField.setMaxLength(RoomListScreen.MAX_TITLE_LENGTH);
         this.titleField.setHint(TITLE_PLACEHOLDER_TEXT);
-        if (this.editingActiveRoom) {
-            String activeTitle = KfcudpClient.getActiveTitle();
-            this.titleField.setValue(activeTitle != null ? activeTitle : "");
-        }
+        this.titleField.setValue(draftTitle != null ? draftTitle : "");
         this.titleField.visible = this.publicRoom;
         this.addRenderableWidget(this.titleField);
         this.titleField.setResponder(text -> {
@@ -404,12 +422,26 @@ public class CustomRoomScreen extends Screen {
                     .build());
         }
 
-        // 채널 설정 버튼 — 위 재생성/시작 버튼(우측 상단 자리)과 중심 기준 좌우반전된 위치(좌측 상단).
-        // RoomListScreen과 똑같은 좌표라 호스트/접속자 화면 어디서든 같은 자리에 뜬다. 채널 값은 그 화면(ChannelScreen)
-        // 안에서만 보이고, 적용하면 공개 중인 방은 바로 다시 공지된다 — 이 화면의 적용 버튼과는 무관하다.
-        this.addDrawableChild(ButtonWidget.builder(CHANNEL_SETTINGS_TEXT, b ->
+        // 기본 설정 아래에서 고급 옵션을 펼친다. 채널은 고급 영역에서만 진입 가능하다.
+        // 채널 적용은 기존처럼 ChannelScreen에서 즉시 반영된다.
+        this.channelButton = ButtonWidget.builder(CHANNEL_SETTINGS_TEXT, b ->
                         Objects.requireNonNull(this.client).setScreen(new ChannelScreen(this)))
-                .dimensions(cx - 155, RoomListScreen.CHANNEL_Y, APPLY_BUTTON_W, 20).build());
+                .dimensions(cx + 5, LIST_Y, 150, 20).build();
+        this.addDrawableChild(this.channelButton);
+        this.addDrawableChild(ButtonWidget.builder(Text.translatable(this.advancedKey()), b -> {
+                    this.advancedExpanded = !this.advancedExpanded;
+                    b.setMessage(Text.translatable(this.advancedKey()));
+                    this.repositionCheckboxes();
+                }).dimensions(cx - 155, LIST_Y, 150, 20).build());
+        this.previousOptionsButton = ButtonWidget.builder(Text.literal("<"), b -> this.scrollOptions(-1))
+                .dimensions(cx + 105, LIST_Y + 24, 22, 20)
+                .tooltip(Tooltip.of(Text.translatable("instant-p2p.custom_room.previous_options"))).build();
+        this.nextOptionsButton = ButtonWidget.builder(Text.literal(">"), b -> this.scrollOptions(1))
+                .dimensions(cx + 133, LIST_Y + 24, 22, 20)
+                .tooltip(Tooltip.of(Text.translatable("instant-p2p.custom_room.next_options"))).build();
+        this.addDrawableChild(this.previousOptionsButton);
+        this.addDrawableChild(this.nextOptionsButton);
+
 
         // 방 옵션 전체 통합 적용 버튼 — 게임모드/정원/공개 허용/제목/치트/관리 명령어를
         // 한 번에 반영한다(onApplyButtonClicked/refreshSettingsApplyButton 참고).
@@ -437,13 +469,12 @@ public class CustomRoomScreen extends Screen {
         // 라벨(영어 기준)과 안 겹치는 선에서, 오른쪽은 게임모드/정원 행과 맞춘다.
         int titleFieldX = cx - 60;
         int titleFieldW = (cx + 155) - titleFieldX;
+        String draftTitle = this.titleField != null ? this.titleField.getText()
+                : this.editingActiveRoom ? KfcudpClient.getActiveTitle() : "";
         this.titleField = new TextFieldWidget(this.textRenderer, titleFieldX, ROW3_Y, titleFieldW, 20, TITLE_PLACEHOLDER_TEXT);
         this.titleField.setMaxLength(RoomListScreen.MAX_TITLE_LENGTH);
         this.titleField.setPlaceholder(TITLE_PLACEHOLDER_TEXT);
-        if (this.editingActiveRoom) {
-            String activeTitle = KfcudpClient.getActiveTitle();
-            this.titleField.setText(activeTitle != null ? activeTitle : "");
-        }
+        this.titleField.setText(draftTitle != null ? draftTitle : "");
         this.titleField.visible = this.publicRoom;
         this.addDrawableChild(this.titleField);
         this.titleField.setChangedListener(text -> {
@@ -560,12 +591,26 @@ public class CustomRoomScreen extends Screen {
                     .build());
         }
 
-        // 채널 설정 버튼 — 위 재생성/시작 버튼(우측 상단 자리)과 중심 기준 좌우반전된 위치(좌측 상단).
-        // RoomListScreen과 똑같은 좌표라 호스트/접속자 화면 어디서든 같은 자리에 뜬다. 채널 값은 그 화면(ChannelScreen)
-        // 안에서만 보이고, 적용하면 공개 중인 방은 바로 다시 공지된다 — 이 화면의 적용 버튼과는 무관하다.
-        this.addDrawableChild(ButtonWidget.builder(CHANNEL_SETTINGS_TEXT, b ->
+        // 기본 설정 아래에서 고급 옵션을 펼친다. 채널은 고급 영역에서만 진입 가능하다.
+        // 채널 적용은 기존처럼 ChannelScreen에서 즉시 반영된다.
+        this.channelButton = ButtonWidget.builder(CHANNEL_SETTINGS_TEXT, b ->
                         Objects.requireNonNull(this.client).setScreen(new ChannelScreen(this)))
-                .dimensions(cx - 155, RoomListScreen.CHANNEL_Y, APPLY_BUTTON_W, 20).build());
+                .dimensions(cx + 5, LIST_Y, 150, 20).build();
+        this.addDrawableChild(this.channelButton);
+        this.addDrawableChild(ButtonWidget.builder(Text.translatable(this.advancedKey()), b -> {
+                    this.advancedExpanded = !this.advancedExpanded;
+                    b.setMessage(Text.translatable(this.advancedKey()));
+                    this.repositionCheckboxes();
+                }).dimensions(cx - 155, LIST_Y, 150, 20).build());
+        this.previousOptionsButton = ButtonWidget.builder(Text.literal("<"), b -> this.scrollOptions(-1))
+                .dimensions(cx + 105, LIST_Y + 24, 22, 20)
+                .tooltip(Tooltip.of(Text.translatable("instant-p2p.custom_room.previous_options"))).build();
+        this.nextOptionsButton = ButtonWidget.builder(Text.literal(">"), b -> this.scrollOptions(1))
+                .dimensions(cx + 133, LIST_Y + 24, 22, 20)
+                .tooltip(Tooltip.of(Text.translatable("instant-p2p.custom_room.next_options"))).build();
+        this.addDrawableChild(this.previousOptionsButton);
+        this.addDrawableChild(this.nextOptionsButton);
+
 
         // 방 옵션 전체 통합 적용 버튼 — 게임모드/정원/공개 허용/제목/치트/관리 명령어를
         // 한 번에 반영한다(onApplyButtonClicked/refreshSettingsApplyButton 참고).
@@ -593,13 +638,12 @@ public class CustomRoomScreen extends Screen {
         // 라벨(영어 기준)과 안 겹치는 선에서, 오른쪽은 게임모드/정원 행과 맞춘다.
         int titleFieldX = cx - 60;
         int titleFieldW = (cx + 155) - titleFieldX;
+        String draftTitle = this.titleField != null ? this.titleField.getText()
+                : this.editingActiveRoom ? KfcudpClient.getActiveTitle() : "";
         this.titleField = new TextFieldWidget(this.textRenderer, titleFieldX, ROW3_Y, titleFieldW, 20, TITLE_PLACEHOLDER_TEXT);
         this.titleField.setMaxLength(RoomListScreen.MAX_TITLE_LENGTH);
         this.titleField.setPlaceholder(TITLE_PLACEHOLDER_TEXT);
-        if (this.editingActiveRoom) {
-            String activeTitle = KfcudpClient.getActiveTitle();
-            this.titleField.setText(activeTitle != null ? activeTitle : "");
-        }
+        this.titleField.setText(draftTitle != null ? draftTitle : "");
         this.titleField.visible = this.publicRoom;
         this.addDrawableChild(this.titleField);
         this.titleField.setChangedListener(text -> {
@@ -662,14 +706,38 @@ public class CustomRoomScreen extends Screen {
     }
     //?}
 
+    private String advancedKey() {
+        return "instant-p2p.custom_room." + (this.advancedExpanded ? "advanced_hide" : "advanced_show");
+    }
+
+    private int visibleOptionRows() {
+        return Math.max(1, Math.min(VISIBLE_ROWS, (this.divider2Y - LIST_Y - 24) / ROW_H));
+    }
+
     /** scrollIndex에 맞춰 보이는 {@link #VISIBLE_ROWS}개만 Y를 배치하고 나머지는 숨긴다. */
+    private void scrollOptions(int delta) {
+        this.checkboxScrollIndex = Math.max(0, Math.min(
+                Math.max(0, this.optionCheckboxes.size() - this.visibleOptionRows()), this.checkboxScrollIndex + delta));
+        this.repositionCheckboxes();
+    }
+
     private void repositionCheckboxes() {
+        if (this.channelButton != null) this.channelButton.visible = this.advancedExpanded;
+        this.checkboxScrollIndex = Math.min(this.checkboxScrollIndex,
+                Math.max(0, this.optionCheckboxes.size() - this.visibleOptionRows()));
+        if (this.previousOptionsButton != null && this.nextOptionsButton != null) {
+            boolean paged = this.advancedExpanded && this.optionCheckboxes.size() > this.visibleOptionRows();
+            this.previousOptionsButton.visible = paged;
+            this.nextOptionsButton.visible = paged;
+            this.previousOptionsButton.active = this.checkboxScrollIndex > 0;
+            this.nextOptionsButton.active = this.checkboxScrollIndex + this.visibleOptionRows() < this.optionCheckboxes.size();
+        }
         for (int i = 0; i < this.optionCheckboxes.size(); i++) {
             var cb = this.optionCheckboxes.get(i);
             int rel = i - this.checkboxScrollIndex;
-            boolean shown = rel >= 0 && rel < VISIBLE_ROWS;
+            boolean shown = this.advancedExpanded && rel >= 0 && rel < this.visibleOptionRows();
             cb.visible = shown;
-            if (shown) cb.setY(LIST_Y + rel * ROW_H);
+            if (shown) cb.setY(LIST_Y + 24 + rel * ROW_H);
         }
     }
 
@@ -678,9 +746,9 @@ public class CustomRoomScreen extends Screen {
         // 커서가 중간 섹션(방 옵션) 안에 있을 때만 체크박스 목록을 스크롤한다 —
         // 그 밖(상단 게임모드/정원, 하단 재생성/취소)에서 휠을 굴렸는데 안 보이는
         // 체크박스가 넘어가버리는 건 직관적이지 않다.
-        if (mouseY < DIVIDER1_Y || mouseY > this.divider2Y)
+        if (!this.advancedExpanded || mouseY < LIST_Y + 24 || mouseY > this.divider2Y)
             return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
-        int maxIndex = Math.max(0, this.optionCheckboxes.size() - VISIBLE_ROWS);
+        int maxIndex = Math.max(0, this.optionCheckboxes.size() - this.visibleOptionRows());
         if (maxIndex <= 0) return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
         int newIndex = this.checkboxScrollIndex - (int) Math.signum(verticalAmount);
         newIndex = Math.max(0, Math.min(maxIndex, newIndex));
