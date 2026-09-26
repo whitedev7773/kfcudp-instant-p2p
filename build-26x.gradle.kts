@@ -105,3 +105,5 @@ publishing {
     }
     repositories {}
 }
+
+apply(from = rootProject.file("gradle/regression-tests.gradle.kts"))
